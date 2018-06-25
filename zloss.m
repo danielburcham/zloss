@@ -51,16 +51,19 @@ format long
 % Check function call
 if nargin < 2
     error('z_loss requires at least two inputs');
-elseif mod(length(varargin),2)~=0
-    if (length(varargin)==1 && isstruct(varargin{1}))
-        varargin = reshape([fieldnames(varargin{1})...
-            struct2cell(varargin{1})]',1,[]);
-    else
-        error(strcat('Inputs must be paired: z_loss(geoimage,',...
-            'tomogram,''PropertyName'',PropertyValue,...)'));
+elseif ~isempty(varargin)
+    if mod(length(varargin),2)~=0
+        if (length(varargin)==1 && isstruct(varargin{1}))
+            varargin = reshape([fieldnames(varargin{1})...
+                struct2cell(varargin{1})]',1,[]);
+        else
+            error(strcat('Inputs must be paired: z_loss(geoimage,',...
+                'tomogram,''PropertyName'',PropertyValue,...)'));
+        end
+    elseif ~any(strcmp(varargin{find(strcmp(varargin,'colors'))+1},...
+            {'BVG','BV'}))
+        error('colors must be set equal to ''BV'' or ''BVG''');
     end
-elseif ~any(strcmp(varargin{find(strcmp(varargin,'colors'))+1},{'BVG','BV'}))
-    error('colors must be set equal to ''BV'' or ''BVG''');
 end
 
 % Default parameters
@@ -71,20 +74,22 @@ pixelExtentInWorld21 = 1;
 pixelExtentInWorld22 = 1;
 
 % User-specified parameters
-for i = 1:2:numel(varargin)
-    switch lower(varargin{i})
-        case 'colors'
-            Colors = varargin{i+1};
-        case 'geopixelextentinworldx'
-            pixelExtentInWorld11 = varargin{i+1};
-        case 'geopixelextentinworldy'
-            pixelExtentInWorld12 = varargin{i+1};
-        case 'tomopixelextentinworldx'
-            pixelExtentInWorld21 = varargin{i+1};
-        case 'tomopixelextentinworldy'
-            pixelExtentInWorld22 = varargin{i+1};
+if ~isempty(varargin)
+    for i = 1:2:numel(varargin)
+        switch lower(varargin{i})
+            case 'colors'
+                Colors = varargin{i+1};
+            case 'geopixelextentinworldx'
+                pixelExtentInWorld11 = varargin{i+1};
+            case 'geopixelextentinworldy'
+                pixelExtentInWorld12 = varargin{i+1};
+            case 'tomopixelextentinworldx'
+                pixelExtentInWorld21 = varargin{i+1};
+            case 'tomopixelextentinworldy'
+                pixelExtentInWorld22 = varargin{i+1};
         otherwise
-        error([varargin{i} 'is not a valid property for the z_loss function.']);
+            error([varargin{i} 'is not a valid property for the z_loss function.']);
+        end
     end
 end
 input1 = find(strcmp({'BV','BVG'},Colors))-1;
