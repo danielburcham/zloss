@@ -10,8 +10,8 @@ This version computes estimates for trees with one or more damaged parts
 and one or more open cavities. When the spatial extent of pixels is not 
 provided as an input parameter, the two input images must be the same size. 
 
-[figuretype,zloss,Ad] = z_loss(geoimage,tomogram);
-[figuretype,zloss,Ad] = z_loss(geoimage,tomogram,'parameter1',value1,...);
+[zloss,Ad] = zloss(geoimage,tomogram);
+[zloss,Ad] = zloss(geoimage,tomogram,'parameter1',value1,...);
 
 REQUIRED INPUTS
 geoimage: string - filepath for geometry image file showing blue trunk
@@ -20,7 +20,7 @@ tomogram: string - filepath for tomogram showing visualized damage pattern
 
 OPTIONAL INPUTS
 colors: string - colors used to select damaged parts, either blue, violet,
-and green ('BVG') or blue and violet ('BV').
+and green ('GVB') or blue and violet ('VB').
 geopixelextentinworldx: float - spatial extent of each pixel in the
 x-direction for the geometry image file
 geopixelextentinworldy: float - spatial extent of each pixel in the
@@ -32,7 +32,7 @@ y-direction for the tomogram
 
 PARAMETER                     CLASS       DEFAULT VALUE
 ---------------------------------------------------------------------------
-colors                        string      'BVG'
+colors                        string      'GVB'
 geopixelextentinworldx        float       1
 geopixelextentinworldy        float       1
 tomopixelextentinworldx       float       1
@@ -40,7 +40,7 @@ tomopixelextentinworldy       float       1
 
 OUTPUTS
 zloss: mx2 matrix containing estimates of degrees clockwise rotation from
-vertical and the percent loss to Z, ZLOSS (%) in the first and second 
+vertical and the percent loss to Z, Z_{LOSS} (%) in the first and second 
 column, respectively.
 Ad: Percent (%) of total damaged cross sectional area.
 
@@ -50,24 +50,24 @@ format long
 
 % Check function call
 if nargin < 2
-    error('z_loss requires at least two inputs');
+    error('zloss requires at least two inputs');
 elseif ~isempty(varargin)
     if mod(length(varargin),2)~=0
         if (length(varargin)==1 && isstruct(varargin{1}))
             varargin = reshape([fieldnames(varargin{1})...
                 struct2cell(varargin{1})]',1,[]);
         else
-            error(strcat('Inputs must be paired: z_loss(geoimage,',...
+            error(strcat('Inputs must be paired: zloss(geoimage,',...
                 'tomogram,''PropertyName'',PropertyValue,...)'));
         end
     elseif ~any(strcmp(varargin{find(strcmp(varargin,'colors'))+1},...
-            {'BVG','BV'}))
-        error('colors must be set equal to ''BV'' or ''BVG''');
+            {'GVB','VB'}))
+        error('colors must be set equal to ''VB'' or ''GVB''');
     end
 end
 
 % Default parameters
-Colors = 'BVG';
+Colors = 'GVB';
 pixelExtentInWorld11 = 1;
 pixelExtentInWorld12 = 1;
 pixelExtentInWorld21 = 1;
@@ -88,11 +88,11 @@ if ~isempty(varargin)
             case 'tomopixelextentinworldy'
                 pixelExtentInWorld22 = varargin{i+1};
         otherwise
-            error([varargin{i} 'is not a valid property for the z_loss function.']);
+            error([varargin{i} 'is not a valid property for the zloss function.']);
         end
     end
 end
-input1 = find(strcmp({'BV','BVG'},Colors))-1;
+input1 = find(strcmp({'VB','GVB'},Colors))-1;
 
 % Import tomogram image file (.jpg)
 A = imread(geoimage,'jpg');
@@ -115,11 +115,13 @@ for i=1:size(O{2,1},1)-1
     [in,~]=inpolygon(O{2,1}{i+1,1}(:,1),O{2,1}{i+1,1}(:,2),...
         O{1,1}(:,1),O{1,1}(:,2));
     if any(~in)
-        [x,y] = polybool('-',O{2,1}{1,1}(:,1),O{2,1}{1,1}(:,2),...
-            O{2,1}{i+1,1}(:,1),O{2,1}{i+1,1}(:,2));
-        O{2,1}{1,1} = [x,y];
+        N = subtract(polyshape(O{2,1}{1,1}(:,1),O{2,1}{1,1}(:,2),...
+            'Simplify',false,'KeepCollinearPoints',true),...
+            polyshape(O{2,1}{i+1,1}(:,1),O{2,1}{i+1,1}(:,2),...
+            'Simplify',false,'KeepCollinearPoints',true));
+        O{2,1}{1,1} = [N.Vertices(:,1),N.Vertices(:,2)];
         O{2,1}{i+1,1}=[];
-        clear x y
+        clear N
     end
 end
 if isShapeMultipart(O{2,1}{1,1}(:,1),O{2,1}{1,1}(:,2))
@@ -141,6 +143,9 @@ end
 
 % Reshape O to remove empty cells and do isShape
 O{2,1} = O{2,1}(~cellfun('isempty',O{2,1}));
+if iscell(O{2,1}{1,1})
+    O{2,1}{1,1}=O{2,1}{1,1}(~cellfun('isempty',O{2,1}{1,1}));
+end
 
 % Compute section properties and percent reduction to Z
 [zloss,Ad,L] = mcl(O);
@@ -158,7 +163,7 @@ if ~iscell(O{2,1}{1,1})
     theta = pi/2:-ang:(-3*pi/2)+ang;
     M(:,1) = rad.*cos(theta)+L(1);
     M(:,2) = rad.*sin(theta)+L(2);
-    M(:,3) = zloss(:,2);
+    M(:,3) = zloss(:,2).*100;
     patch(M(:,1),M(:,2),M(:,3),'facecolor','none','edgecolor','interp',...
         'linewidth',2);
     colormap('jet');
@@ -167,7 +172,7 @@ if ~iscell(O{2,1}{1,1})
         plot(O{2,1}{ia,1}(:,1),O{2,1}{ia,1}(:,2),'Color',[0 0 0],'LineWidth',0.75);
     end
     c = colorbar;
-    c.Label.String = 'Percent reduction to section modulus, \itZ_{LOSS}\rm (%)';
+    c.Label.String = 'Percent decrease to section modulus, \itZ_{LOSS}\rm (%)';
     c.Label.FontSize = 12;
 elseif iscell(O{2,1}{1,1})
     M = zeros(length(zloss(:,2)),3);
@@ -181,7 +186,7 @@ elseif iscell(O{2,1}{1,1})
     theta = pi/2:-ang:(-3*pi/2)+ang;
     M(:,1) = rad.*cos(theta)+L(1);
     M(:,2) = rad.*sin(theta)+L(2);
-    M(:,3) = zloss(:,2);
+    M(:,3) = zloss(:,2).*100;
     patch(M(:,1),M(:,2),M(:,3),'facecolor','none','edgecolor','interp',...
         'linewidth',2);
     colormap('jet');
@@ -197,7 +202,7 @@ elseif iscell(O{2,1}{1,1})
         end
     end
     c = colorbar;
-    c.Label.String = 'Percent reduction to section modulus, \itZ_{LOSS}\rm (%)';
+    c.Label.String = 'Percent decrease to section modulus, \itZ_{LOSS}\rm (%)';
     c.Label.FontSize = 12;
 end
 
@@ -299,7 +304,7 @@ O = bwboundaries(P,'noholes',8);
 
 % Convert to registered Cartesian coordinate system
 ind1 = find(I(:,1));
-[~,ind2] = max(cellfun('length',H(find(I(:,1)))));
+[~,ind2] = max(cellfun('length',H(ind1)));
 ind3 = ind1(ind2);
 [x1, y1] = intrinsicToWorld(R1,H{ind3,1}(:,2),H{ind3,1}(:,1)); %Solid region
 ymax = max(y1);
