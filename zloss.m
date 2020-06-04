@@ -19,8 +19,8 @@ boundary line
 tomogram: string - filepath for tomogram showing visualized damage pattern
 
 OPTIONAL INPUTS
-colors: string - colors used to select damaged parts, either blue, violet,
-and green ('GVB') or blue and violet ('VB').
+colors: string - colors used to select damaged parts, either green, violet,
+and blue ('GVB'), violet and blue ('VB'), or blue ('B')
 geopixelextentinworldx: float - spatial extent of each pixel in the
 x-direction for the geometry image file
 geopixelextentinworldy: float - spatial extent of each pixel in the
@@ -44,6 +44,19 @@ vertical and the percent loss to Z, Z_{LOSS} (%) in the first and second
 column, respectively.
 Ad: Percent (%) of total damaged cross sectional area.
 
+Copyright 2020 Daniel C. Burcham
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 ---------------------------------------------------------------------------
 %}
 format long
@@ -61,8 +74,8 @@ elseif ~isempty(varargin)
                 'tomogram,''PropertyName'',PropertyValue,...)'));
         end
     elseif ~any(strcmp(varargin{find(strcmp(varargin,'colors'))+1},...
-            {'GVB','VB'}))
-        error('colors must be set equal to ''VB'' or ''GVB''');
+            {'GVB','VB','B'}))
+        error('colors must be set equal to ''GVB'', ''VB'', or ''B''');
     end
 end
 
@@ -92,7 +105,7 @@ if ~isempty(varargin)
         end
     end
 end
-input1 = find(strcmp({'VB','GVB'},Colors))-1;
+input1 = find(strcmp({'B','VB','GVB'},Colors))-1;
 
 % Import tomogram image file (.jpg)
 A = imread(geoimage,'jpg');
@@ -258,37 +271,57 @@ G = zeros(size(A,1),size(A,2));
 G(F.PixelIdxList{idx}) = 1;
 [H,~,~,I] = bwboundaries(G,'holes',8);
 
-%Convert RGB image to LAB color space
-Z = rgb2lab(B);
-
-% Choose histogram thresholds for decayed (blue and purple) region
-Y = zeros(6,1);
-Y(1,1) = 20.922;
-Y(2,1) = 100.000;
-Y(3,1) = -26.902;
-Y(4,1) = 81.975;
-Y(5,1) = -63.537;
-Y(6,1) = -3.780;
-X = (Z(:,:,1) >= Y(1,1) ) & (Z(:,:,1) <= Y(2,1)) & ...
-    (Z(:,:,2) >= Y(3,1) ) & (Z(:,:,2) <= Y(4,1)) & ...
-    (Z(:,:,3) >= Y(5,1) ) & (Z(:,:,3) <= Y(6,1));
-W = bwareaopen(X,30);
-
-if input1==1
-    % Choose histogram thresholds for decayed (green) region
-    V=zeros(6,1);
-    V(1,1)=0.000;
-    V(2,1)=100.000;
-    V(3,1)=-68.602;
-    V(4,1)=-10.461;
-    V(5,1)=-99.915;
-    V(6,1)=62.944;
-    U = (Z(:,:,1) >= V(1,1) ) & (Z(:,:,1) <= V(2,1)) & ...
-        (Z(:,:,2) >= V(3,1) ) & (Z(:,:,2) <= V(4,1)) & ...
-        (Z(:,:,3) >= V(5,1) ) & (Z(:,:,3) <= V(6,1));
-    T = bwareaopen(U,30);
-    S = logical(W+T);
-    W = S;
+switch input1
+    case 0
+        %Convert RGB image to HSV color space
+        Z = rgb2hsv(B);
+        
+        % Choose histogram thresholds for decayed (blue) region
+        Y = zeros(6,1);
+        Y(1,1) = 0.497;
+        Y(2,1) = 0.638;
+        Y(3,1) = 0.087;
+        Y(4,1) = 1.000;
+        Y(5,1) = 0.592;
+        Y(6,1) = 1.000;
+        X = (Z(:,:,1) >= Y(1,1) ) & (Z(:,:,1) <= Y(2,1)) & ...
+            (Z(:,:,2) >= Y(3,1) ) & (Z(:,:,2) <= Y(4,1)) & ...
+            (Z(:,:,3) >= Y(5,1) ) & (Z(:,:,3) <= Y(6,1));
+        W = bwareaopen(X,30);
+        
+    case {1, 2}
+        %Convert RGB image to LAB color space
+        Z = rgb2lab(B);
+        
+        % Choose histogram thresholds for decayed (blue and purple) region
+        Y = zeros(6,1);
+        Y(1,1) = 20.922;
+        Y(2,1) = 100.000;
+        Y(3,1) = -26.902;
+        Y(4,1) = 81.975;
+        Y(5,1) = -63.537;
+        Y(6,1) = -3.780;
+        X = (Z(:,:,1) >= Y(1,1) ) & (Z(:,:,1) <= Y(2,1)) & ...
+            (Z(:,:,2) >= Y(3,1) ) & (Z(:,:,2) <= Y(4,1)) & ...
+            (Z(:,:,3) >= Y(5,1) ) & (Z(:,:,3) <= Y(6,1));
+        W = bwareaopen(X,30);
+        
+        if input1==2
+            % Choose histogram thresholds for decayed (green) region
+            V=zeros(6,1);
+            V(1,1)=0.000;
+            V(2,1)=100.000;
+            V(3,1)=-68.602;
+            V(4,1)=-10.461;
+            V(5,1)=-99.915;
+            V(6,1)=62.944;
+            U = (Z(:,:,1) >= V(1,1) ) & (Z(:,:,1) <= V(2,1)) & ...
+                (Z(:,:,2) >= V(3,1) ) & (Z(:,:,2) <= V(4,1)) & ...
+                (Z(:,:,3) >= V(5,1) ) & (Z(:,:,3) <= V(6,1));
+            T = bwareaopen(U,30);
+            S = logical(W+T);
+            W = S;
+        end
 end
 
 R = bwconncomp(W,6);
