@@ -182,7 +182,10 @@ if ~iscell(O{2,1}{1,1})
     colormap('jet');
     hold on;
     for ia=1:size(O{2,1},1)
-        plot(O{2,1}{ia,1}(:,1),O{2,1}{ia,1}(:,2),'Color',[0 0 0],'LineWidth',0.75);
+        plot(O{2,1}{ia,1}(:,1),O{2,1}{ia,1}(:,2),'Color',[0 0 0],...
+            'LineWidth',0.75);
+        patch(O{2,1}{ia,1}(:,1),O{2,1}{ia,1}(:,2),...
+            [0.70294118 0.48901961 0.34823529]);
     end
     c = colorbar;
     c.Label.String = 'Percent decrease to section modulus, \itZ_{LOSS}\rm (%)';
@@ -208,10 +211,14 @@ elseif iscell(O{2,1}{1,1})
         if ia <= size(O{2,1}{1,1},1)
             plot(O{2,1}{1,1}{ia,1}(:,1),O{2,1}{1,1}{ia,1}(:,2),...
                 'Color',[0 0 0],'LineWidth',0.75);
+            patch(O{2,1}{1,1}{ia,1}(:,1),O{2,1}{1,1}{ia,1}(:,2),...
+                [0.70294118 0.48901961 0.34823529]);
         elseif ia > size(O{2,1}{1,1},1)
             plot(O{2,1}{ia-size(O{2,1}{1,1},1)+1,1}(:,1),...
                 O{2,1}{ia-size(O{2,1}{1,1},1)+1,1}(:,2),'Color',...
                 [0 0 0],'LineWidth',0.75);
+            patch(O{2,1}{ia-size(O{2,1}{1,1},1)+1,1}(:,1),...
+                O{2,1}{ia-size(O{2,1}{1,1},1)+1}(:,2),[1 1 1]);
         end
     end
     c = colorbar;
@@ -248,9 +255,9 @@ pairs are recorded as row-wise entries in a mX2 matrix.
 
 % Choose histogram thresholds for solid region
 C = zeros(6,1);
-C(1,1) = 0.014;
-C(2,1) = 0.776;
-C(3,1) = 0.160;
+C(1,1) = 0.472;
+C(2,1) = 0.833;
+C(3,1) = 0.091;
 C(4,1) = 1.000;
 C(5,1) = 0.000;
 C(6,1) = 1.000;
@@ -264,12 +271,90 @@ E = (D(:,:,1) >= C(1,1) ) & (D(:,:,1) <= C(2,1)) & ...
     (D(:,:,3) >= C(5,1) ) & (D(:,:,3) <= C(6,1));
 
 % Find connected regions, select maximum, and trace boundary
-F = bwconncomp(E,4);
-numPixels = cellfun(@numel,F.PixelIdxList);
-[~,idx] = max(numPixels);
-G = zeros(size(A,1),size(A,2));
-G(F.PixelIdxList{idx}) = 1;
-[H,~,~,I] = bwboundaries(G,'holes',8);
+E(1:20,:) = 0; % Exclude tomogram colorbar
+E = bwareafilt(bwskel(imclose(bwareaopen(E,30),strel('disk',5,0))),...
+    [2 Inf],8);
+F = bwmorph(E,'endpoints');
+G = bwlabel(E,8);
+[r, c] = find(F);
+H = [r c G(F) zeros(size(G(F)))];
+while any(any(bwmorph(E,'branchpoints')))
+    branchpoints = bwmorph(E,'branchpoints');
+    [y,x] = find(branchpoints);
+    branchregions = G(branchpoints);
+    for i = 1:numel(y)
+        dist = bwdistgeodesic(logical(G==branchregions(i)),x(i),y(i));
+        [~,idx]=min(dist(sub2ind(size(E),H(G(F)==branchregions(i),1),...
+            H(G(F)==branchregions(i),2))));
+        ids = H(G(F)==branchregions(i),1:2);
+        ids = ids(idx,1:2);
+        ids1=sub2ind(size(E),ids(1),ids(2));
+        E(ids1)=0;
+        while ids1 ~= sub2ind(size(E),y(i),x(i))
+            [~,cells]=bwdist(E);
+            E(cells(ids1))=0;
+            ids1 = cells(ids1);
+        end
+        E(ids1)=1;
+    end
+end
+F = bwmorph(E,'endpoints');
+G = bwlabel(E,8);
+[r, c] = find(F);
+H = [r c G(F) zeros(size(G(F)))];
+for i = 1:size(H,1)
+    if H(i,4)==1
+        continue
+    else
+        props = regionprops(G,'area'); %#ok
+        M = arrayfun(@(a) a.Area > 30,props);
+        if M(H(i,3))
+            ids = find(H(:,3)~=H(i,3) & ~H(:,4));
+            distances = sqrt((H(H(:,3)~=H(i,3) & ~H(:,4),1)-H(i,1)).^2+...
+                (H(H(:,3)~=H(i,3) & ~H(:,4),2)-H(i,2)).^2);
+        else
+            ids = find(H(:,3)~=H(i,3) & ~H(:,4) & ~(atan2(H(i,1)-...
+                H(:,1),H(i,2)-H(:,2)) > atan2(H(i,1)-H(H(:,3)==H(i,3)...
+                & (1:size(H,1)~=i)',1),H(i,2)-H(H(:,3)==H(i,3) & ...
+                (1:size(H,1)~=i)',2))-pi/8 & atan2(H(i,1)-H(:,1),H(i,2)-...
+                H(:,2)) < atan2(H(i,1)-H(H(:,3)==H(i,3) & ...
+                (1:size(H,1)~=i)',1),H(i,2)-H(H(:,3)==H(i,3) & ...
+                (1:size(H,1)~=i)',2))+pi/8));
+            distances = sqrt((H(H(:,3)~=H(i,3) & ~H(:,4) & ...
+                ~(atan2(H(i,1)-H(:,1),H(i,2)-H(:,2)) > atan2(H(i,1)-...
+                H(H(:,3)==H(i,3) & (1:size(H,1)~=i)',1),H(i,2)-...
+                H(H(:,3)==H(i,3) & (1:size(H,1)~=i)',2))-pi/8 & ...
+                atan2(H(i,1)-H(:,1),H(i,2)-H(:,2)) < atan2(H(i,1)-...
+                H(H(:,3)==H(i,3) & (1:size(H,1)~=i)',1),H(i,2)-...
+                H(H(:,3)==H(i,3) & (1:size(H,1)~=i)',2))+pi/8),1)-...
+                H(i,1)).^2+(H(H(:,3)~=H(i,3) & ~H(:,4) & ~(atan2(H(i,1)-...
+                H(:,1),H(i,2)-H(:,2)) > atan2(H(i,1)-H(H(:,3)==H(i,3)...
+                & (1:size(H,1)~=i)',1),H(i,2)-H(H(:,3)==H(i,3) & ...
+                (1:size(H,1)~=i)',2))-pi/8 & atan2(H(i,1)-H(:,1),H(i,2)-...
+                H(:,2)) < atan2(H(i,1)-H(H(:,3)==H(i,3) & ...
+                (1:size(H,1)~=i)',1),H(i,2)-H(H(:,3)==H(i,3) & ...
+                (1:size(H,1)~=i)',2))+pi/8),2)-H(i,2)).^2);
+        end
+        [~,idx]=min(distances);
+        I = zeros(2*(H(ids(idx),2)-H(i,2)+1),2);
+        I(:,1) = (0:size(I,1)-1) - repelem(0:size(I,1)/2-1,2);
+        I(:,2) = repelem((H(i,2):H(ids(idx),2))',2);
+        I(:,1) = round((H(ids(idx),1)-H(i,1))/(H(ids(idx),2)-H(i,2)+1)...
+            .*I(:,1)) + H(i,1);
+        for ia = 1:2:size(I,1)-1
+            if (H(ids(idx),1)-H(i,1))/(H(ids(idx),2)-H(i,2)+1) >= 0
+                E(sub2ind(size(E),I(ia,1),I(ia,2)):sub2ind(size(E),...
+                    I(ia+1,1),I(ia+1,2)))=1;
+            else
+                E(sub2ind(size(E),I(ia,1),I(ia,2)):-1:sub2ind(size(E),...
+                    I(ia+1,1),I(ia+1,2)))=1;
+            end
+        end
+        H([ids(idx) i],4)=1;
+    end
+end
+J = imdilate(bwmorph(E,'skel',Inf),strel('disk',1,0));
+[K,~,~,L] = bwboundaries(J,'holes',8);
 
 switch input1
     case 0
@@ -336,10 +421,10 @@ P=logical(P);
 O = bwboundaries(P,'noholes',8);
 
 % Convert to registered Cartesian coordinate system
-ind1 = find(I(:,1));
-[~,ind2] = max(cellfun('length',H(ind1)));
+ind1 = find(L(:,1));
+[~,ind2] = max(cellfun('length',K(ind1)));
 ind3 = ind1(ind2);
-[x1, y1] = intrinsicToWorld(R1,H{ind3,1}(:,2),H{ind3,1}(:,1)); %Solid region
+[x1, y1] = intrinsicToWorld(R1,K{ind3,1}(:,2),K{ind3,1}(:,1)); %Solid region
 ymax = max(y1);
 y1 = ymax - y1;
 N = cell(2,1);
