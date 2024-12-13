@@ -354,7 +354,7 @@ for i = 1:size(H,1)
     end
 end
 J = imdilate(bwmorph(E,'skel',Inf),strel('disk',1,0));
-[K,~,~,L] = bwboundaries(J,'holes',8);
+[K,~,~,L] = bwboundaries(J,8,'holes');
 
 switch input1
     case 0
@@ -418,7 +418,7 @@ for i = 1:size(Q,2)
 end
 P(1:20,:) = 0; % Exclude tomogram colorbar from decayed areas
 P=logical(P);
-O = bwboundaries(P,'noholes',8);
+O = bwboundaries(P,8,'noholes');
 
 % Convert to registered Cartesian coordinate system
 ind1 = find(L(:,1));
